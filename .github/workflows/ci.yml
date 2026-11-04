@@ -1,0 +1,48 @@
+# CI for the portfolio index.
+#
+# This repository is a single README and a gate. The gate checks the
+# things that actually go wrong in an index:
+#   1. Required files and sections present, and in order.
+#   2. Every repository it links to is linked, and every link points at
+#      a repository in this account. An index that links to a repo that
+#      was renamed or made private is worse than no index.
+#   3. Every repository description carries all four beats: what was
+#      built, what was measured, what was found, and what was NOT done.
+#      A description missing the last beat is an inflated claim.
+#   4. No application-specific or employer-specific content. The index
+#      is read by anyone evaluating the work.
+#   5. No secrets, no personal identifiers, no absolute developer paths.
+#
+# A red gate blocks the build.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Portfolio quality gate
+        run: |
+          set +e
+          python3 scripts/gate.py > gate.log 2>&1
+          status=$?
+          set -e
+          cat gate.log
+          if [ $status -ne 0 ]; then
+            echo "::error::portfolio gate failed with status $status"
+            exit $status
+          fi
+          if grep -q "Traceback" gate.log; then
+            echo "::error::gate produced a Python traceback"
+            exit 1
+          fi
