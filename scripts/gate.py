@@ -18,10 +18,15 @@ that actually go wrong in an index:
 4. No employer-specific framing. The index has to work for any
    reader, so it cannot name a specific company as the audience.
 5. No secrets, no personal identifiers, no absolute developer paths.
+   The secret scan reads ``git ls-files``, so a reader's virtual
+   environment is never mistaken for published content.
 6. Every linked repository is described with all four beats: what was
    built, what was measured, what was found, what was not done. A
    description missing the "not done" beat is an inflated claim, and
    an inflated claim discounts the other three.
+
+7. Control-coverage figures quoted from the CRM repository match the
+   figure that repository derives from its own table.
 
 The gate is standard-library only and exits 0 green, 1 red.
 """
@@ -30,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -167,13 +173,42 @@ def gate_g5_no_application_material() -> tuple[bool, str]:
     return True, "no application-specific framing"
 
 
+def _repo_files() -> list[Path]:
+    """Files that belong to the repository.
+
+    ``git ls-files`` in a checkout, so a reader's virtual environment or
+    scratch directory is never scanned, whatever it is named. In a source
+    archive with no ``.git``, walk the tree and skip cache directories and
+    any directory holding a ``pyvenv.cfg``.
+    """
+    if (REPO_ROOT / ".git").exists():
+        try:
+            listed = subprocess.run(
+                ["git", "ls-files", "-z"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                check=True,
+            ).stdout.decode("utf-8")
+            return [REPO_ROOT / name for name in listed.split("\0") if name]
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    venvs = [cfg.parent for cfg in REPO_ROOT.rglob("pyvenv.cfg")]
+    return [
+        path
+        for path in REPO_ROOT.rglob("*")
+        if not any(
+            part in {".git", "__pycache__", ".pytest_cache"}
+            for part in path.relative_to(REPO_ROOT).parts
+        )
+        and not any(venv in path.parents for venv in venvs)
+    ]
+
+
 def gate_g6_no_secrets() -> tuple[bool, str]:
-    """G6: no secrets."""
+    """G6: no secrets in any tracked file."""
     hits = []
-    for path in REPO_ROOT.rglob("*"):
+    for path in _repo_files():
         if not path.is_file():
-            continue
-        if any(part in {".git", "__pycache__", ".pytest_cache"} for part in path.parts):
             continue
         if path.suffix.lower() in {".pyc", ".png", ".jpg", ".wav", ".pdf", ".zip"}:
             continue
@@ -204,6 +239,40 @@ def gate_g7_no_personal_data() -> tuple[bool, str]:
     return True, "no personal data, no absolute paths"
 
 
+# The control-coverage figures the CRM repository derives from its NIST
+# family table (its gate check G10): 171 of 214, 79.9 percent. The index
+# cannot import that table, so the figures are pinned here; change both
+# together. The retracted figures (174 of 232, about 75 percent, 58
+# remaining) may appear only in a sentence that says they were claimed.
+CRM_COVERAGE_NUMBERS = {"171", "214", "79.9", "80"}
+CRM_RETRACTED_NUMBERS = {"174", "232", "75", "58"}
+
+
+def gate_g8_published_figures() -> tuple[bool, str]:
+    """G8: control-coverage figures in the index match the CRM table.
+
+    In every sentence about controls or coverage, each number (other than
+    the catalog name "800-53 Rev 5") must be a figure the CRM table
+    produces, or a retracted figure reported as a past claim.
+    """
+    text = " ".join(_readme_text().split())
+    bad = []
+    for sentence in re.split(r"(?<=[.!?;])\s+", text):
+        lower = sentence.lower()
+        if "controls" not in lower and "coverage" not in lower:
+            continue
+        sentence = re.sub(r"800-53( Rev\.? ?5)?", " ", sentence)
+        for number in re.findall(r"\b\d+(?:\.\d+)?\b", sentence):
+            if number in CRM_COVERAGE_NUMBERS:
+                continue
+            if number in CRM_RETRACTED_NUMBERS and "claimed" in lower:
+                continue
+            bad.append(number)
+    if bad:
+        return False, f"coverage figures not from the CRM table: {bad[:4]}"
+    return True, "control coverage matches the CRM table (171 of 214)"
+
+
 GATES = [
     ("G1", "required files", gate_g1_required_files),
     ("G2", "readme sections", gate_g2_readme_sections),
@@ -212,6 +281,7 @@ GATES = [
     ("G5", "no application material", gate_g5_no_application_material),
     ("G6", "no secrets", gate_g6_no_secrets),
     ("G7", "no personal data", gate_g7_no_personal_data),
+    ("G8", "published figures", gate_g8_published_figures),
 ]
 
 

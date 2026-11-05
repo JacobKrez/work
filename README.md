@@ -172,9 +172,14 @@ tabs, not conversation with a resident.
 **What I did not do.** This was a procurement response, not a shipped
 system. No pricing, no vendor comparison, and no confidential
 question-and-answer content is published here, and the README lists
-every cut and the reason for it. Coverage of the 232 applicable NIST
-controls is 174, not 232, and the remaining 58 are categorized rather
-than glossed.
+every cut and the reason for it. The NIST family rows address 171 of
+214 applicable controls, 79.9 percent, with the inherited
+physical-protection family left out of both sides. That is a mapping
+target, not an audit. A summary line written during the response
+claimed 174 of 232, and after the rows were corrected the README still
+carried that summary's 75 percent headline; a gate check now sums the
+table and fails the build if any coverage figure in the prose
+disagrees with it.
 
 ---
 
